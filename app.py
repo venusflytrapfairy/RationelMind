@@ -117,13 +117,13 @@ if st.button("Generate Intelligence Report"):
 
                 # --- Render Shared Constructs ---
                 st.header("1. Shared Constructs")
-                for c in parsed_data['construct_analysis']['shared']:
+                for c in parsed_data.get('construct_analysis', {}).get('shared', []):
                     st.markdown(f"- {c}")
 
-                # --- Render Unique Constructs (with key mapping) ---
+                # --- Render Unique Constructs ---
                 st.header("2. Unique Constructs by Paper")
-                for item in parsed_data['construct_analysis']['unique_by_paper']:
-                    filename = item.get("filename") or item.get("paper")
+                for item in parsed_data.get('construct_analysis', {}).get('unique_by_paper', []):
+                    filename = item.get("filename") or item.get("paper") or "Unknown Paper"
                     constructs = item.get("unique") or item.get("constructs", [])
                     st.markdown(f"**{filename}**")
                     for u in constructs:
@@ -131,17 +131,20 @@ if st.button("Generate Intelligence Report"):
 
                 # --- Render Summaries & Bias ---
                 st.header("3. Paper Summaries & Bias Assessment")
-                for paper in parsed_data['paper_summaries']:
-                    st.markdown(f"**{paper['filename']} ({paper['authors']})**")
-                    st.markdown(f"- Summary: {paper['summary']}")
-                    bias = paper['bias_assessment']
-                    st.markdown(f"- Bias: {bias['level']} ({bias['justification']})")
+                for paper in parsed_data.get('paper_summaries', []):
+                    filename = paper.get("filename") or paper.get("paper") or "Unknown Paper"
+                    st.markdown(f"**{filename} ({paper.get('authors','Unknown')})**")
+                    st.markdown(f"- Summary: {paper.get('summary','No summary provided')}")
+                    bias = paper.get('bias_assessment', {})
+                    st.markdown(f"- Bias: {bias.get('level','Unknown')} ({bias.get('justification','No justification')})")
 
                 # --- Render Causal Contradiction ---
                 st.header("4. Causal Contradiction / Stances")
-                st.markdown(f"**Central Thesis:** {parsed_data['causal_contradiction']['central_thesis']}")
-                for stance in parsed_data['causal_contradiction']['stances']:
-                    st.markdown(f"- {stance.get('filename') or stance.get('paper')} ({stance['authors']}): {stance['stance']}")
+                thesis = parsed_data.get('causal_contradiction', {}).get('central_thesis', 'Not provided')
+                st.markdown(f"**Central Thesis:** {thesis}")
+                for stance in parsed_data.get('causal_contradiction', {}).get('stances', []):
+                    filename = stance.get("filename") or stance.get("paper") or "Unknown Paper"
+                    st.markdown(f"- {filename} ({stance.get('authors','Unknown')}): {stance.get('stance','No stance')}")
 
                 # --- Render Visual Graph ---
                 st.header("5. Visual Conflict Graph")
@@ -149,8 +152,8 @@ if st.button("Generate Intelligence Report"):
                 <div id="graph-container" style="width: 100%; height: 450px;"></div>
                 <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
                 <script>
-                    var nodes = new vis.DataSet({json.dumps(parsed_data['causal_contradiction']['graph']['nodes'])});
-                    var edges = new vis.DataSet({json.dumps(parsed_data['causal_contradiction']['graph']['edges'])});
+                    var nodes = new vis.DataSet({json.dumps(parsed_data.get('causal_contradiction', {}).get('graph', {}).get('nodes', []))});
+                    var edges = new vis.DataSet({json.dumps(parsed_data.get('causal_contradiction', {}).get('graph', {}).get('edges', []))});
                     var container = document.getElementById('graph-container');
                     var data = {{ nodes: nodes, edges: edges }};
                     var options = {{
@@ -167,17 +170,17 @@ if st.button("Generate Intelligence Report"):
 
                 # --- Render Reference Intelligence ---
                 st.header("6. Reference Intelligence")
-                ref = parsed_data['reference_intelligence']
-                if ref['recommendation_found']:
-                    st.markdown(f"**Recommended Paper:** {ref['recommended_paper_title']}")
-                    st.markdown(f"{ref['justification']}")
+                ref = parsed_data.get('reference_intelligence', {})
+                if ref.get('recommendation_found', False):
+                    st.markdown(f"**Recommended Paper:** {ref.get('recommended_paper_title','')}")
+                    st.markdown(f"{ref.get('justification','')}")
                 else:
                     st.markdown("No specific paper could be recommended from the references.")
 
                 # --- Render Multidisciplinary Connections ---
                 st.header("7. Multidisciplinary Connections")
-                for c in parsed_data['multidisciplinary_connections']:
-                    st.markdown(f"- **{c['field']}**: {c['connection']}")
+                for c in parsed_data.get('multidisciplinary_connections', []):
+                    st.markdown(f"- **{c.get('field','Unknown')}**: {c.get('connection','No connection provided')}")
 
             except Exception as e:
                 st.error(f"❌ Analysis Failed: {e}")
