@@ -6,8 +6,8 @@ import google.generativeai as genai
 import os
 import re
 from dotenv import load_dotenv
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import streamlit.components.v1 as components
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 # --- Load environment ---
 load_dotenv()
@@ -17,7 +17,7 @@ if not api_key:
 else:
     genai.configure(api_key=api_key)
 
-# --- Gemini AI Safety Settings ---
+# --- Safety settings ---
 SAFETY_SETTINGS = {
     HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
     HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
@@ -25,16 +25,19 @@ SAFETY_SETTINGS = {
     HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
 }
 
-# --- Your Ultimate Intelligence Prompt ---
+# --- Prompt (keep your full PIPELINE_PROMPT here) ---
 PIPELINE_PROMPT = """
-... your PIPELINE_PROMPT from Flask code ...
+... your full PIPELINE_PROMPT here ...
 """
 
-# --- Helper to parse JSON from Gemini ---
+# --- Helper: extract JSON safely ---
 def clean_and_parse_json(response_text):
+    """
+    Extracts first JSON object from text, returns as Python dict.
+    """
     match = re.search(r'\{[\s\S]*\}', response_text)
     if not match:
-        raise ValueError(f"No valid JSON in Gemini response. RAW: {response_text}")
+        raise ValueError(f"No valid JSON found in response. RAW (first 500 chars):\n{response_text[:500]}")
     return json.loads(match.group(0).strip())
 
 # --- Streamlit UI ---
@@ -56,15 +59,20 @@ if st.button("Generate Intelligence Report"):
                     combined_text += f"--- Paper: {file.name} ---\n" + "".join(page.get_text() for page in doc)[:8000] + "\n\n"
                     doc.close()
 
-                # Call Gemini AI
+                # --- Call Gemini AI ---
                 model = genai.GenerativeModel('gemini-2.5-flash')
                 prompt = PIPELINE_PROMPT.format(text=combined_text)
                 response = model.generate_content(prompt, stream=False, safety_settings=SAFETY_SETTINGS)
+
+                # --- Debug: show raw response if parsing fails ---
+                st.write("**Raw Gemini Response (first 1000 chars):**")
+                st.code(response.text[:1000])
+
                 parsed_data = clean_and_parse_json(response.text)
 
                 st.success("✅ Analysis complete!")
 
-                # --- Display Results ---
+                # --- Display results (constructs, summaries, graph, references, etc.) ---
                 st.header("1. Shared Constructs")
                 for c in parsed_data['construct_analysis']['shared']:
                     st.markdown(f"- {c}")
