@@ -110,10 +110,6 @@ if st.button("Generate Intelligence Report"):
                     safety_settings=SAFETY_SETTINGS
                 )
 
-                # --- Debug raw response ---
-                st.write("**Raw Gemini Response (first 1000 chars):**")
-                st.code(response.text[:1000])
-
                 # --- Parse JSON safely ---
                 parsed_data = clean_and_parse_json(response.text)
 
@@ -124,11 +120,13 @@ if st.button("Generate Intelligence Report"):
                 for c in parsed_data['construct_analysis']['shared']:
                     st.markdown(f"- {c}")
 
-                # --- Render Unique Constructs ---
+                # --- Render Unique Constructs (with key mapping) ---
                 st.header("2. Unique Constructs by Paper")
                 for item in parsed_data['construct_analysis']['unique_by_paper']:
-                    st.markdown(f"**{item['filename']}**")
-                    for u in item['unique']:
+                    filename = item.get("filename") or item.get("paper")
+                    constructs = item.get("unique") or item.get("constructs", [])
+                    st.markdown(f"**{filename}**")
+                    for u in constructs:
                         st.markdown(f"- {u}")
 
                 # --- Render Summaries & Bias ---
@@ -143,7 +141,7 @@ if st.button("Generate Intelligence Report"):
                 st.header("4. Causal Contradiction / Stances")
                 st.markdown(f"**Central Thesis:** {parsed_data['causal_contradiction']['central_thesis']}")
                 for stance in parsed_data['causal_contradiction']['stances']:
-                    st.markdown(f"- {stance['filename']} ({stance['authors']}): {stance['stance']}")
+                    st.markdown(f"- {stance.get('filename') or stance.get('paper')} ({stance['authors']}): {stance['stance']}")
 
                 # --- Render Visual Graph ---
                 st.header("5. Visual Conflict Graph")
