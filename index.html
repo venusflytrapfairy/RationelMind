@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RationelMind - AI Research Intelligence</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f0f2f5; color: #1c1e21; margin: 0; padding: 1rem; }
+        .container { background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); width: 100%; max-width: 900px; margin: auto; text-align: center; }
+        h1, h2 { color: #0c64e8; }
+        .upload-area { border: 2px dashed #ccc; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+        .file-list { list-style: none; padding: 0; text-align: left; }
+        .file-list-item { background: #e9e9e9; padding: 5px 10px; border-radius: 4px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .remove-btn { color: red; cursor: pointer; font-weight: bold; }
+        .custom-file-btn, .analyze-button { background-color: #0c64e8; color: white; padding: 12px 20px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; transition: background-color 0.3s; margin-top: 10px;}
+        .analyze-button:disabled { background-color: #a0a0a0; }
+        .results { text-align: left; margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #ddd; }
+        .error { color: #d93025; font-weight: bold; margin-top: 1rem; }
+        .result-section { margin-bottom: 2.5rem; }
+        h3 { color: #333; border-bottom: 2px solid #eee; padding-bottom: 5px; font-size: 1.4em; }
+        #graph-container { width: 100%; height: 450px; border: 1px solid #ddd; border-radius: 8px; background-color: #fcfcfc; }
+        .summary-block, .stance-block { background-color: #f7f7f7; padding: 0; border-radius: 5px; margin-bottom: 1rem; overflow: hidden; }
+        .summary-block { border-left: 4px solid #0c64e8; }
+        .stance-block { border-left: 4px solid #d93025; }
+        .summary-block .filename, .stance-block .filename { background-color: #e9ecef; padding: 8px 15px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .summary-block .text, .stance-block .text { padding: 15px; }
+        .construct-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; }
+        .construct-item { background-color: #e7f3ff; color: #0c64e8; padding: 6px 14px; border-radius: 15px; font-size: 1em; }
+        .construct-item.unique { background-color: #fff4e0; color: #d96d00; }
+        .unique-construct-paper { margin-bottom: 10px; }
+        .bias-flag { padding: 4px 10px; font-size: 0.8em; font-weight: bold; color: white; border-radius: 12px; cursor: help; }
+        .bias-flag.low { background-color: #28a745; }
+        .bias-flag.medium { background-color: #ffc107; color: #212529; }
+        .bias-flag.high { background-color: #dc3545; }
+        .intelligence-card { background: #e7f3ff; border-left: 4px solid #0c64e8; padding: 15px; border-radius: 5px; margin-top: 1rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RationelMind AI</h1>
+        <p>Your research intelligence dashboard. Upload 2-3 PDFs for a full analysis.</p>
+        <div class="upload-area"><ul id="fileList" class="file-list"><li>No files selected.</li></ul><button id="addFileBtn" class="custom-file-btn">Add PDF(s)</button><input type="file" id="fileInput" accept="application/pdf" multiple style="display: none;"></div>
+        <button id="analyzeButton" class="analyze-button">Generate Intelligence Report</button>
+        <div id="loader" style="display: none; margin-top: 1rem;">Synthesizing intelligence...</div>
+        <div id="error" class="error"></div>
+        
+        <div id="results" class="results" style="display: none;">
+            <div class="result-section"><h3>1. Construct Analysis</h3><h4>Shared Constructs:</h4><div id="sharedConstructs" class="construct-list"></div><h4 style="margin-top: 1.5rem;">Unique Constructs by Paper:</h4><div id="uniqueConstructs"></div></div>
+            <div class="result-section"><h3>2. Per-Paper Summaries & Bias Assessment</h3><div id="summaries"></div></div>
+            <div class="result-section"><h3>3. Causal Contradiction Analysis</h3><p><strong>Central Thesis of Conflict/Agreement:</strong> <span id="centralThesis" style="font-style: italic;"></span></p><div id="stances"></div></div>
+            <div class="result-section"><h3>4. Visual Conflict Network</h3><div id="graph-container"></div></div>
+            <div class="result-section"><h3>5. Reference Intelligence</h3><div id="reference" class="intelligence-card"></div></div>
+            <div class="result-section"><h3>6. Multidisciplinary Connections</h3><div id="connections" class="intelligence-card"></div></div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput'), addFileBtn = document.getElementById('addFileBtn'), analyzeButton = document.getElementById('analyzeButton'), fileList = document.getElementById('fileList'), loader = document.getElementById('loader'), errorDiv = document.getElementById('error'), resultsDiv = document.getElementById('results');
+        let selectedFiles = [];
+
+        function updateFileListUI() {
+            fileList.innerHTML = '<li>No files selected.</li>';
+            if (selectedFiles.length > 0) {
+                fileList.innerHTML = '';
+                selectedFiles.forEach((file, index) => {
+                    let li = document.createElement('li');
+                    li.className = 'file-list-item';
+                    li.innerHTML = `${file.name} <span class="remove-btn" onclick="removeFile(${index})">(x)</span>`;
+                    fileList.appendChild(li);
+                });
+            }
+        }
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileListUI();
+        }
+        addFileBtn.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', (e) => {
+            selectedFiles = [...selectedFiles, ...Array.from(e.target.files)].slice(0, 3);
+            updateFileListUI();
+            e.target.value = '';
+        });
+
+        analyzeButton.addEventListener('click', async () => {
+            if (selectedFiles.length < 2) { errorDiv.textContent = 'Please select 2 or 3 PDF files.'; return; }
+            errorDiv.textContent = ''; resultsDiv.style.display = 'none'; loader.style.display = 'block'; analyzeButton.disabled = true;
+            const formData = new FormData();
+            selectedFiles.forEach(file => formData.append('papers', file));
+            try {
+                const response = await fetch('/analyze', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Unknown server error.');
+                renderPipelineResults(data);
+            } catch (err) { errorDiv.textContent = `❌ Analysis Failed: ${err.message}`; } finally { loader.style.display = 'none'; analyzeButton.disabled = false; }
+        });
+
+        function renderPipelineResults(data) {
+            // 1. Render Constructs
+            const sharedContainer = document.getElementById('sharedConstructs'); sharedContainer.innerHTML = '';
+            data.construct_analysis.shared.forEach(name => { const el = document.createElement('div'); el.className = 'construct-item'; el.textContent = name; sharedContainer.appendChild(el); });
+            const uniqueContainer = document.getElementById('uniqueConstructs'); uniqueContainer.innerHTML = '';
+            data.construct_analysis.unique_by_paper.forEach(item => { const paperDiv = document.createElement('div'); paperDiv.className = 'unique-construct-paper'; paperDiv.innerHTML = `<strong>${item.filename}:</strong> `; const tagContainer = document.createElement('div'); tagContainer.className = 'construct-list'; item.unique.forEach(name => { const el = document.createElement('span'); el.className = 'construct-item unique'; el.textContent = name; tagContainer.appendChild(el); }); paperDiv.appendChild(tagContainer); uniqueContainer.appendChild(paperDiv); });
+
+            // 2. Render Summaries & Bias
+            const summariesContainer = document.getElementById('summaries'); summariesContainer.innerHTML = '';
+            data.paper_summaries.forEach(item => { const el = document.createElement('div'); el.className = 'summary-block'; const bias = item.bias_assessment; const biasFlag = `<span class="bias-flag ${bias.level.toLowerCase()}" title="${bias.justification}">BIAS: ${bias.level.toUpperCase()}</span>`; el.innerHTML = `<div class="filename"><span>${item.filename} (<em>${item.authors}</em>)</span> ${biasFlag}</div><div class="text">${item.summary}</div>`; summariesContainer.appendChild(el); });
+
+            // 3. Render Contradiction with Authors
+            document.getElementById('centralThesis').textContent = data.causal_contradiction.central_thesis;
+            const stancesContainer = document.getElementById('stances'); stancesContainer.innerHTML = '';
+            data.causal_contradiction.stances.forEach(item => { const el = document.createElement('div'); el.className = 'stance-block'; el.innerHTML = `<div class="filename">${item.filename}</div><div class="text"><strong>${item.authors}:</strong> ${item.stance}</div>`; stancesContainer.appendChild(el); });
+
+            // 4. Render CLEAN Graph
+            const container = document.getElementById('graph-container');
+            const edges = data.causal_contradiction.graph.edges.map(edge => ({ ...edge, color: edge.relationship_type === 'agreement' ? '#28a745' : (edge.relationship_type === 'disagreement' ? '#dc3545' : '#6c757d'), width: 2.5 }));
+            const nodes = new vis.DataSet(data.causal_contradiction.graph.nodes);
+            nodes.update({ id: "thesis_node", font: { size: 20 }, value: 30 });
+            
+            const graphData = { nodes, edges: new vis.DataSet(edges) };
+            const options = { layout: { hierarchical: false }, nodes: { borderWidth: 2, font: { size: 16 } }, edges: { font: { align: 'middle', size: 14, background: 'white' }, arrows: 'to', smooth: { type: 'cubicBezier', forceDirection: 'vertical', roundness: 0.4 } }, physics: { solver: 'barnesHut', barnesHut: { gravitationalConstant: -30000, centralGravity: 0.1, springLength: 300 } }, interaction: { hover: true, tooltipDelay: 200 }, };
+            new vis.Network(container, graphData, options);
+            
+            // 5. Render Reference Intelligence
+            const refEl = document.getElementById('reference');
+            if (data.reference_intelligence.recommendation_found) {
+                refEl.innerHTML = `<h4>Recommended Reading</h4><p>Based on the bibliographies of the provided papers, this article may be more foundational or relevant:</p><p><strong>"${data.reference_intelligence.recommended_paper_title}"</strong></p><em>${data.reference_intelligence.justification}</em>`;
+            } else {
+                refEl.innerHTML = `<h4>No specific paper could be recommended from the references.</h4>`;
+            }
+
+            // 6. Render Multidisciplinary Connections
+            const connEl = document.getElementById('connections');
+            connEl.innerHTML = '<h4>Potential Connections to Other Fields:</h4>';
+            data.multidisciplinary_connections.forEach(c => {
+                connEl.innerHTML += `<p><strong>${c.field}:</strong> ${c.connection}</p>`;
+            });
+
+            resultsDiv.style.display = 'block';
+        }
+        updateFileListUI();
+    </script>
+</body>
+</html>
