@@ -1,133 +1,124 @@
-import os
+# app.py
+import streamlit as st
 import fitz
 import json
 import google.generativeai as genai
-from dotenv import load_dotenv
-from flask import Flask, request, jsonify, render_template
-import traceback
+import os
 import re
+from dotenv import load_dotenv
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
+import streamlit.components.v1 as components
 
-# --- Basic App Setup ---
-app = Flask(__name__)
+# --- Load environment ---
 load_dotenv()
-
-# --- Configure Gemini AI Client ---
-try:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY not found in .env file.")
+api_key = os.getenv("GEMINI_API_KEY")
+if not api_key:
+    st.error("GEMINI_API_KEY not found. Set it in your Streamlit secrets or .env file.")
+else:
     genai.configure(api_key=api_key)
-    print("✅ Gemini AI client configured successfully.")
-except Exception as e:
-    print(f"❌ CRITICAL: Failed to configure Gemini AI. {e}")
 
-# --- THE ULTIMATE "INTELLIGENCE" PROMPT (v5) ---
+# --- Gemini AI Safety Settings ---
+SAFETY_SETTINGS = {
+    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+}
+
+# --- Your Ultimate Intelligence Prompt ---
 PIPELINE_PROMPT = """
-You are a world-class AI research synthesizer. Your mission is to generate a deep analysis report with several intelligence components.
-
-**CRITICAL INSTRUCTIONS & OUTPUT FORMAT:**
-Follow these steps and STRICTLY return ONLY a single JSON object. Do not use markdown.
-
-1.  **Extract Core Information:** For each paper, identify the key constructs (shared and unique) and the primary author(s).
-2.  **Summarize & Assess Bias:** For each paper, write a summary and perform a bias assessment (Low/Medium/High) based on academic criteria like framing, scope, and counter-arguments.
-3.  **Analyze Causal Contradiction:**
-    -   **Central Thesis:** State the core conflict as a sharp, single-sentence question.
-    -   **Stances:** For each paper, provide its specific stance on the thesis, ATTRIBUTING the argument to the identified author(s). E.g., "In [Filename], Author X argues that...".
-4.  **Generate a CLEAN Conflict Graph:**
-    -   Create nodes for each paper and ONE for the central thesis.
-    -   Create edges from each paper to the thesis node.
-    -   The edge `label` MUST be a very short keyword phrase (1-2 words MAX) for visual clarity.
-5.  **Reference Intelligence (New):**
-    -   Scan the bibliographies OF THE PROVIDED PAPERS ONLY.
-    -   Identify ONE paper title FROM WITHIN THOSE REFERENCES that appears most foundational or relevant to the core topic.
-    -   Provide the title and a justification for why it's a recommended read. If no clear recommendation can be made, state that.
-6.  **Multidisciplinary Connections (New):**
-    -   Identify 2-3 other academic fields (e.g., Sociology, Computer Science, Economics) that the core topic connects to, and provide a brief explanation for each connection.
-
-**JSON OUTPUT FORMAT:**
-{{
-  "construct_analysis": {{
-    "shared": ["Shared Construct 1"],
-    "unique_by_paper": [ {{"filename": "Filename 1", "unique": ["Unique Construct A"]}} ]
-  }},
-  "paper_summaries": [
-    {{
-      "filename": "Filename 1",
-      "authors": "Author A, Author B",
-      "summary": "This paper's summary.",
-      "bias_assessment": {{"level": "Low", "justification": "Justification."}}
-    }}
-  ],
-  "causal_contradiction": {{
-    "central_thesis": "The core conflict, as a question.",
-    "stances": [
-      {{"filename": "Filename 1", "authors": "Author A", "stance": "Author A argues that..."}}
-    ],
-    "graph": {{
-      "nodes": [
-        {{"id": "paper_1", "label": "Filename 1", "shape": "box"}},
-        {{"id": "thesis_node", "label": "Central Thesis Name", "shape": "ellipse", "size": 25}}
-      ],
-      "edges": [
-        {{ "from": "paper_1", "to": "thesis_node", "label": "Keywords", "relationship_type": "disagreement"}}
-      ]
-    }}
-  }},
-  "reference_intelligence": {{
-    "recommendation_found": true,
-    "recommended_paper_title": "Title of the recommended cited paper.",
-    "justification": "Why this paper seems more relevant or foundational."
-  }},
-  "multidisciplinary_connections": [
-    {{"field": "Sociology", "connection": "Explanation of the connection."}}
-  ]
-}}
-
-**Papers to Analyze:**
----
-{text}
----
+... your PIPELINE_PROMPT from Flask code ...
 """
 
-SAFETY_SETTINGS = { HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE, }
-
+# --- Helper to parse JSON from Gemini ---
 def clean_and_parse_json(response_text):
     match = re.search(r'\{[\s\S]*\}', response_text)
-    if not match: raise ValueError(f"No valid JSON in Gemini response. RAW: {response_text}")
+    if not match:
+        raise ValueError(f"No valid JSON in Gemini response. RAW: {response_text}")
     return json.loads(match.group(0).strip())
 
-@app.route('/analyze', methods=['POST'])
-def analyze_documents():
-    print("\nBackend: Received intelligence analysis request...")
-    files = request.files.getlist('papers')
-    if not files or len(files) < 2: return jsonify({"error": "Please upload 2 or 3 PDF files."}), 400
+# --- Streamlit UI ---
+st.set_page_config(page_title="RationelMind AI", layout="wide")
+st.title("RationelMind AI - Research Intelligence")
+st.write("Upload 2-3 PDFs to generate a deep intelligence report.")
 
-    try:
-        combined_text = ""
-        for file in files:
-            doc = fitz.open(stream=file.read(), filetype="pdf")
-            text = "".join(page.get_text() for page in doc)
-            doc.close()
-            combined_text += f"--- Paper: {file.filename} ---\n{text[:8000]}\n\n"
+uploaded_files = st.file_uploader("Upload PDFs", type="pdf", accept_multiple_files=True)
 
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        prompt = PIPELINE_PROMPT.format(text=combined_text)
-        
-        print("Backend: Sending intelligence prompt to Gemini...")
-        response = model.generate_content(prompt, stream=False, safety_settings=SAFETY_SETTINGS)
+if st.button("Generate Intelligence Report"):
+    if not uploaded_files or len(uploaded_files) < 2:
+        st.error("Please upload at least 2 PDFs.")
+    else:
+        with st.spinner("Analyzing papers..."):
+            try:
+                combined_text = ""
+                for file in uploaded_files:
+                    doc = fitz.open(stream=file.read(), filetype="pdf")
+                    combined_text += f"--- Paper: {file.name} ---\n" + "".join(page.get_text() for page in doc)[:8000] + "\n\n"
+                    doc.close()
 
-        parsed_data = clean_and_parse_json(response.text)
-        print("✅ Backend: Successfully returned intelligence report.")
-        return jsonify(parsed_data)
+                # Call Gemini AI
+                model = genai.GenerativeModel('gemini-2.5-flash')
+                prompt = PIPELINE_PROMPT.format(text=combined_text)
+                response = model.generate_content(prompt, stream=False, safety_settings=SAFETY_SETTINGS)
+                parsed_data = clean_and_parse_json(response.text)
 
-    except Exception as e:
-        print(f"--- BACKEND CRASH ---"); traceback.print_exc(); print(f"---------------------")
-        return jsonify({"error": "An internal server error occurred during analysis."}), 500
+                st.success("✅ Analysis complete!")
 
-@app.route('/')
-def home():
-    return render_template('index.html')
+                # --- Display Results ---
+                st.header("1. Shared Constructs")
+                for c in parsed_data['construct_analysis']['shared']:
+                    st.markdown(f"- {c}")
 
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+                st.header("2. Unique Constructs by Paper")
+                for item in parsed_data['construct_analysis']['unique_by_paper']:
+                    st.markdown(f"**{item['filename']}**")
+                    for u in item['unique']:
+                        st.markdown(f"- {u}")
+
+                st.header("3. Paper Summaries & Bias Assessment")
+                for paper in parsed_data['paper_summaries']:
+                    st.markdown(f"**{paper['filename']} ({paper['authors']})**")
+                    st.markdown(f"- Summary: {paper['summary']}")
+                    bias = paper['bias_assessment']
+                    st.markdown(f"- Bias: {bias['level']} ({bias['justification']})")
+
+                st.header("4. Causal Contradiction / Stances")
+                st.markdown(f"**Central Thesis:** {parsed_data['causal_contradiction']['central_thesis']}")
+                for stance in parsed_data['causal_contradiction']['stances']:
+                    st.markdown(f"- {stance['filename']} ({stance['authors']}): {stance['stance']}")
+
+                st.header("5. Visual Conflict Graph")
+                graph_html = f"""
+                <div id="graph-container" style="width: 100%; height: 450px;"></div>
+                <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+                <script>
+                    var nodes = new vis.DataSet({json.dumps(parsed_data['causal_contradiction']['graph']['nodes'])});
+                    var edges = new vis.DataSet({json.dumps(parsed_data['causal_contradiction']['graph']['edges'])});
+                    var container = document.getElementById('graph-container');
+                    var data = {{ nodes: nodes, edges: edges }};
+                    var options = {{
+                        layout: {{ hierarchical: false }},
+                        nodes: {{ borderWidth: 2, font: {{ size: 16 }} }},
+                        edges: {{ font: {{ align: 'middle', size: 14 }}, arrows: 'to' }},
+                        physics: {{ solver: 'barnesHut', barnesHut: {{ gravitationalConstant: -30000, centralGravity: 0.1, springLength: 300 }} }},
+                        interaction: {{ hover: true }}
+                    }};
+                    new vis.Network(container, data, options);
+                </script>
+                """
+                components.html(graph_html, height=500, scrolling=True)
+
+                st.header("6. Reference Intelligence")
+                ref = parsed_data['reference_intelligence']
+                if ref['recommendation_found']:
+                    st.markdown(f"**Recommended Paper:** {ref['recommended_paper_title']}")
+                    st.markdown(f"{ref['justification']}")
+                else:
+                    st.markdown("No specific paper could be recommended from the references.")
+
+                st.header("7. Multidisciplinary Connections")
+                for c in parsed_data['multidisciplinary_connections']:
+                    st.markdown(f"- **{c['field']}**: {c['connection']}")
+
+            except Exception as e:
+                st.error(f"❌ Analysis Failed: {e}")
